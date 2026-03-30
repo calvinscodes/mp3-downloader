@@ -11,8 +11,32 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "com.personal.wavdrop",
+    "productName": "Wavdrop",
+    "icon": "build/icon.icns",
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "category": "public.app-category.music",
+      "icon": "build/icon.icns"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "calvinscodes",
+      "repo": "mp3-downloader"
+    },
+    "extraResources": [
+      { "from": "resources/yt-dlp", "to": "yt-dlp" },
+      { "from": "resources/ffmpeg", "to": "ffmpeg" }
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ]
+  },
   "dependencies": {
-    "electron": "^28.0.0",
+    "electron-updater": "^6.1.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zustand": "^4.4.7"
@@ -22,6 +46,7 @@
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",

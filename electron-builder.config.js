@@ -1,6 +1,7 @@
 module.exports = {
   appId: 'com.personal.wavdrop',
   productName: 'Wavdrop',
+  icon: 'assets/icon.icns',
   mac: {
     target: [
       { target: 'dmg', arch: ['arm64', 'x64'] }

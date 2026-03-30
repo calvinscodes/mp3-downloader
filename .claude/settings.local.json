@@ -10,7 +10,13 @@
       "Bash(git -C /Users/desiremedia/Documents/mp3-downloader log --oneline -3)",
       "Bash(git init:*)",
       "Bash(git remote:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git -C /Users/desiremedia/Documents/mp3-downloader config user.email \"desiremedia@icloud.com\")",
+      "Bash(git commit:*)",
+      "Bash(rm /Users/desiremedia/Documents/mp3-downloader/.git/index.lock)",
+      "Bash(git -C:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)"
     ]
   }
 }
