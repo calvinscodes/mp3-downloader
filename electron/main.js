@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const { autoUpdater } = require('electron-updater')
+const https = require('https')
 
 const { detectPlatform, checkDependencies } = require('./utils')
 const { fetchInfo, startDownload, cancelDownload } = require('./downloader')
@@ -228,57 +228,65 @@ function buildAppMenu() {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Auto-updater
+// Auto-updater  (GitHub API version check — works without code signing)
 // ---------------------------------------------------------------------------
 
 function setupAutoUpdater() {
   // Only run in packaged app — not during npm run dev
   if (!app.isPackaged) return
 
-  autoUpdater.autoDownload = false  // ask user before downloading
+  // Check 4 seconds after launch to give the window time to fully load
+  setTimeout(checkForUpdates, 4000)
+}
 
-  autoUpdater.on('update-available', (info) => {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Available',
-      message: `Wavdrop ${info.version} is available.`,
-      detail: 'A new version has been released. Would you like to download it now?',
-      buttons: ['Download Update', 'Later'],
-      defaultId: 0
-    }).then(({ response }) => {
-      if (response === 0) {
-        autoUpdater.downloadUpdate()
-        // Show progress in a second dialog
-        dialog.showMessageBox(mainWindow, {
-          type: 'info',
-          title: 'Downloading Update',
-          message: 'Downloading update in the background...',
-          detail: 'The app will prompt you to restart when it\'s ready.',
-          buttons: ['OK']
-        })
+function checkForUpdates() {
+  const options = {
+    hostname: 'api.github.com',
+    path: '/repos/calvinscodes/mp3-downloader/releases/latest',
+    headers: { 'User-Agent': 'Wavdrop-Updater' }
+  }
+
+  https.get(options, (res) => {
+    let body = ''
+    res.on('data', (chunk) => { body += chunk })
+    res.on('end', () => {
+      try {
+        const release = JSON.parse(body)
+        const latest = (release.tag_name || '').replace(/^v/, '')
+        const current = app.getVersion()
+
+        if (latest && isNewerVersion(latest, current)) {
+          const releaseUrl = release.html_url || 'https://github.com/calvinscodes/mp3-downloader/releases/latest'
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Update Available',
+            message: `Wavdrop ${latest} is available`,
+            detail: `You're running ${current}. Download the new DMG, open it and drag Wavdrop to Applications to update.`,
+            buttons: ['Download Now', 'Later'],
+            defaultId: 0
+          }).then(({ response }) => {
+            if (response === 0) shell.openExternal(releaseUrl)
+          })
+        }
+      } catch (e) {
+        console.error('[updater] parse error:', e.message)
       }
     })
+  }).on('error', (e) => {
+    console.error('[updater] network error:', e.message)
   })
+}
 
-  autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded.',
-      detail: 'Restart Wavdrop now to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall()
-    })
-  })
-
-  autoUpdater.on('error', (err) => {
-    console.error('[updater] error:', err.message)
-  })
-
-  // Check for updates 3 seconds after launch (give window time to load)
-  setTimeout(() => autoUpdater.checkForUpdates(), 3000)
+// Returns true if `a` is a higher semver than `b`
+function isNewerVersion(a, b) {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0)
+    if (diff > 0) return true
+    if (diff < 0) return false
+  }
+  return false
 }
 
 function extractSpotifyTitle(url) {
