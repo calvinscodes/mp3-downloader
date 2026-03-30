@@ -1,10 +1,17 @@
 import React, { useState } from 'react'
 
 const PLATFORM_COLORS = {
-  youtube: 'var(--youtube)',
-  soundcloud: 'var(--soundcloud)',
-  spotify: 'var(--spotify)',
-  unknown: 'var(--text-muted)'
+  youtube: '#FF0000',
+  soundcloud: '#FF5500',
+  spotify: '#1DB954',
+  unknown: '#888888'
+}
+
+const PLATFORM_BG = {
+  youtube: 'rgba(255, 0, 0, 0.12)',
+  soundcloud: 'rgba(255, 85, 0, 0.12)',
+  spotify: 'rgba(29, 185, 84, 0.12)',
+  unknown: 'rgba(136, 136, 136, 0.08)'
 }
 
 const STATUS_LABELS = {
@@ -24,6 +31,7 @@ export default function QueueItem({ download, onCancel, onRemove, onOpenFolder }
   } = download
 
   const platformColor = PLATFORM_COLORS[platform] || PLATFORM_COLORS.unknown
+  const platformBg = PLATFORM_BG[platform] || PLATFORM_BG.unknown
   const isActive = status === 'downloading'
   const isDone = status === 'complete'
   const isFailed = status === 'error' || status === 'cancelled'
@@ -73,6 +81,14 @@ export default function QueueItem({ download, onCancel, onRemove, onOpenFolder }
           <span className={`queue-item-badge queue-item-badge--${status}`}>
             {STATUS_LABELS[status] || status}
           </span>
+
+          {/* Platform badge */}
+          {platform && platform !== 'unknown' && (
+            <span className="queue-item-badge queue-item-platform-badge" style={{ color: platformColor, background: PLATFORM_BG[platform] || PLATFORM_BG.unknown }}>
+              <PlatformIcon platform={platform} color={platformColor} size={11} />
+              <span>{platform.charAt(0).toUpperCase() + platform.slice(1)}</span>
+            </span>
+          )}
 
           {isActive && (
             <span className="queue-item-stats">
@@ -141,8 +157,8 @@ function truncate(str, max) {
   return str.length > max ? str.slice(0, max) + '…' : str
 }
 
-function PlatformIcon({ platform, color }) {
-  const props = { width: 18, height: 18, fill: color, viewBox: '0 0 24 24' }
+function PlatformIcon({ platform, color, size = 18 }) {
+  const props = { width: size, height: size, fill: color, viewBox: '0 0 24 24' }
   if (platform === 'youtube') {
     return (
       <svg {...props}>

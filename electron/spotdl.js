@@ -162,6 +162,8 @@ function startSpotifyDownload({ id, url, quality, outputPath, onProgress, onComp
     const searchTerm = info.artist
       ? `${info.artist} - ${info.title}`
       : info.title
+    // Search with artist + title only — specific enough to find the right track
+    // Avoid appending "official audio" as it can match wrong songs with the same title
     const query = `ytsearch1:${searchTerm}`
 
     console.log(`[spotify] searching YouTube: "${query}"`)

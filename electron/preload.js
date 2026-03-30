@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkDeps: () =>
     ipcRenderer.invoke('deps:check'),
 
+  getTotalDownloaded: () =>
+    ipcRenderer.invoke('stats:getTotalDownloaded'),
+
+  incrementTotalDownloaded: () =>
+    ipcRenderer.invoke('stats:incrementTotalDownloaded'),
+
   openFolder: (filePath) =>
     ipcRenderer.invoke('shell:openFolder', filePath),
 

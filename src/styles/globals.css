@@ -504,6 +504,18 @@ code {
   gap: 8px;
 }
 
+.queue-item-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
 .queue-item-badge {
   font-size: 10px;
   font-family: var(--font-mono);
@@ -655,6 +667,24 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 400px;
+}
+
+.bottom-bar-counter {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.bottom-bar-counter-num {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bottom-bar-counter-label {
+  color: var(--text-dim);
 }
 
 /* ============================================================

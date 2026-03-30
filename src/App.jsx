@@ -17,6 +17,8 @@ export default function App() {
   const addDownload = useDownloadStore((s) => s.addDownload)
   const outputPath = useDownloadStore((s) => s.outputPath)
   const downloads = useDownloadStore((s) => s.downloads)
+  const totalDownloaded = useDownloadStore((s) => s.totalDownloaded)
+  const setTotalDownloaded = useDownloadStore((s) => s.setTotalDownloaded)
 
   // Watch for completed/error downloads to show toasts
   const prevDownloads = React.useRef({})
@@ -47,6 +49,11 @@ export default function App() {
     // Check dependencies
     window.electronAPI.checkDeps().then((result) => {
       setDeps(result)
+    })
+
+    // Load persistent download counter
+    window.electronAPI.getTotalDownloaded().then((count) => {
+      setTotalDownloaded(count)
     })
   }, [])
 
@@ -82,6 +89,10 @@ export default function App() {
             <FolderSmallIcon />
             <span className="bottom-bar-path">{outputPath || '~/Downloads'}</span>
           </button>
+          <span className="bottom-bar-counter" title="Total files downloaded">
+            <span className="bottom-bar-counter-num">{totalDownloaded.toLocaleString()}</span>
+            <span className="bottom-bar-counter-label">{totalDownloaded === 1 ? 'file downloaded' : 'files downloaded'}</span>
+          </span>
         </div>
       </div>
 

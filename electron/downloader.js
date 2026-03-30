@@ -92,24 +92,33 @@ function startDownload({ id, url, quality, outputPath, onProgress, onComplete, o
   ]
 
   let stderr = ''
+  let stdout = ''
+
+  console.log('[yt-dlp] command:', ytdlpPath, args.join(' '))
 
   const proc = spawn(ytdlpPath, args)
   activeProcesses.set(id, proc)
 
   proc.stdout.on('data', (data) => {
-    const lines = data.toString().split('\n')
+    const text = data.toString()
+    stdout += text
+    const lines = text.split('\n')
     for (const line of lines) {
       if (!line.trim()) continue
+      console.log('[yt-dlp stdout]', line)
       parseProgressLine(line, id, onProgress)
     }
   })
 
   proc.stderr.on('data', (data) => {
-    stderr += data.toString()
+    const text = data.toString()
+    stderr += text
+    console.log('[yt-dlp stderr]', text.trim())
   })
 
   proc.on('close', (code) => {
     activeProcesses.delete(id)
+    console.log('[yt-dlp] exit code:', code)
     if (code === 0) {
       onComplete({ id })
     } else {

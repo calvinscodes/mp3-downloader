@@ -163,6 +163,19 @@ ipcMain.handle('settings:setOutputPath', async () => {
   return selected
 })
 
+// Total downloaded counter — persists across sessions and queue clears
+ipcMain.handle('stats:getTotalDownloaded', async () => {
+  const settings = loadSettings()
+  return settings.totalDownloaded || 0
+})
+
+ipcMain.handle('stats:incrementTotalDownloaded', async () => {
+  const settings = loadSettings()
+  const newCount = (settings.totalDownloaded || 0) + 1
+  saveSettings({ totalDownloaded: newCount })
+  return newCount
+})
+
 // Check all dependencies
 ipcMain.handle('deps:check', async () => {
   return checkDependencies()

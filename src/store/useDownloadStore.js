@@ -25,6 +25,7 @@ const useDownloadStore = create((set, get) => ({
   quality: 'best',
   deps: { ytdlp: false, ffmpeg: false, spotdl: false, python3: false },
   listenersInitialized: false,
+  totalDownloaded: 0,
 
   // -------------------------------------------------------------------------
   // Download object shape:
@@ -168,6 +169,8 @@ const useDownloadStore = create((set, get) => ({
 
   setDeps: (deps) => set({ deps }),
 
+  setTotalDownloaded: (totalDownloaded) => set({ totalDownloaded }),
+
   // Register IPC listeners exactly once
   initListeners: () => {
     if (get().listenersInitialized) return
@@ -195,6 +198,10 @@ const useDownloadStore = create((set, get) => ({
         speed: null,
         eta: null,
         outputPath
+      })
+      // Persist counter and update UI
+      window.electronAPI.incrementTotalDownloaded().then((newCount) => {
+        set({ totalDownloaded: newCount })
       })
     })
 
