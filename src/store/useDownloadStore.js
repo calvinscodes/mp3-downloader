@@ -6,6 +6,8 @@ function generateId() {
 
 function detectPlatform(url) {
   if (!url) return 'unknown'
+  // Not a URL → search query
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return 'search'
   try {
     const u = new URL(url)
     const host = u.hostname.replace('www.', '')
@@ -55,15 +57,17 @@ const useDownloadStore = create((set, get) => ({
   addDownload: async (url) => {
     const id = generateId()
     const platform = detectPlatform(url)
+    // For text search queries, prefix with ytsearch1: for yt-dlp
+    const resolvedUrl = platform === 'search' ? `ytsearch1:${url}` : url
 
     // Add skeleton item immediately
     set((state) => ({
       downloads: [
         {
           id,
-          url,
+          url: resolvedUrl,
           platform,
-          title: url,
+          title: platform === 'search' ? url : url,
           thumbnail: null,
           uploader: '',
           duration: '',
@@ -82,7 +86,7 @@ const useDownloadStore = create((set, get) => ({
 
     // Fetch metadata
     try {
-      const info = await window.electronAPI.fetchInfo(url)
+      const info = await window.electronAPI.fetchInfo(resolvedUrl)
       set((state) => ({
         downloads: state.downloads.map((d) =>
           d.id === id
@@ -113,7 +117,7 @@ const useDownloadStore = create((set, get) => ({
     // Start the download
     const { outputPath, quality } = get()
     try {
-      await window.electronAPI.startDownload({ id, url, quality, outputPath })
+      await window.electronAPI.startDownload({ id, url: resolvedUrl, quality, outputPath })
       set((state) => ({
         downloads: state.downloads.map((d) =>
           d.id === id ? { ...d, status: 'downloading', message: 'Downloading...' } : d
