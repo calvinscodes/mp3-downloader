@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Read(//Library/Frameworks/Python.framework/Versions/3.14/**)",
+      "Read(//usr/local/lib/**)",
+      "Bash(python3.14 -m site --user-base)",
+      "Bash(gh auth:*)",
+      "Bash(git -C /Users/desiremedia/Documents/mp3-downloader remote -v)",
+      "Bash(git -C /Users/desiremedia/Documents/mp3-downloader log --oneline -3)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
