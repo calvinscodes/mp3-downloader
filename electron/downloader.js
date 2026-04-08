@@ -67,10 +67,83 @@ function fetchInfo(url) {
 }
 
 /**
- * Start a download using yt-dlp.
- * @param {{ id: string, url: string, quality: string, outputPath: string, onProgress: Function, onComplete: Function, onError: Function }} opts
+ * Search for a Topic-channel upload (official studio audio) for a given search term.
+ * YouTube auto-generates "Artist - Topic" channels that contain only official audio.
+ * Returns a direct youtube.com URL if found, or null if not found.
+ *
+ * @param {string} searchTerm  e.g. "All Things Break - Gravity"
+ * @returns {Promise<string|null>}
  */
-function startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false }) {
+function findTopicChannelVideo(searchTerm) {
+  return new Promise((resolve) => {
+    const ytdlpPath = getBinaryPath('yt-dlp')
+    ensureExecutable(ytdlpPath)
+
+    const args = [
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+      `ytsearch15:${searchTerm}`
+    ]
+
+    console.log('[topic-search] scanning 15 results for Topic channel:', searchTerm)
+
+    const proc = spawn(ytdlpPath, args)
+    let output = ''
+    let resolved = false
+
+    const done = (val) => {
+      if (!resolved) { resolved = true; resolve(val) }
+    }
+
+    proc.stdout.on('data', (d) => {
+      output += d.toString()
+      // Parse line-by-line so we can resolve early on first match
+      const lines = output.split('\n')
+      output = lines.pop() // keep incomplete last line buffered
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const entry = JSON.parse(line)
+          const channel = (entry.channel || entry.uploader || '').toLowerCase()
+          if (channel.endsWith('- topic')) {
+            console.log(`[topic-search] found: "${entry.channel}" → ${entry.id}`)
+            proc.kill()
+            done(`https://www.youtube.com/watch?v=${entry.id}`)
+            return
+          }
+        } catch (_) {}
+      }
+    })
+
+    proc.on('close', () => {
+      console.log('[topic-search] no Topic channel found, using fallback search')
+      done(null)
+    })
+
+    proc.on('error', () => done(null))
+
+    // Safety timeout
+    setTimeout(() => { proc.kill(); done(null) }, 20000)
+  })
+}
+
+/**
+ * Start a download using yt-dlp.
+ * @param {{ id: string, url: string, quality: string, outputPath: string, onProgress: Function, onComplete: Function, onError: Function, isSearch?: boolean, searchTerm?: string }} opts
+ */
+function startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, searchTerm = null }) {
+  // For search-based downloads, first try to find the official Topic channel upload
+  if (isSearch && searchTerm) {
+    findTopicChannelVideo(searchTerm).then((topicUrl) => {
+      _startDownload({ id, url: topicUrl || url, quality, outputPath, onProgress, onComplete, onError, isSearch: !topicUrl })
+    })
+    return
+  }
+  _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch })
+}
+
+function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false }) {
   const ytdlpPath = getBinaryPath('yt-dlp')
   const ffmpegPath = getBinaryPath('ffmpeg')
   ensureExecutable(ytdlpPath)

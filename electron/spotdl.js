@@ -162,24 +162,23 @@ function startSpotifyDownload({ id, url, quality, outputPath, onProgress, onComp
     const searchTerm = info.artist
       ? `${info.artist} - ${info.title}`
       : info.title
-    // Search with artist + title only — specific enough to find the right track
-    // Avoid appending "official audio" as it can match wrong songs with the same title
-    const query = `ytsearch1:${searchTerm}`
+    const fallbackQuery = `ytsearch1:${searchTerm}`
 
-    console.log(`[spotify] searching YouTube: "${query}"`)
+    console.log(`[spotify] searching for Topic channel: "${searchTerm}"`)
 
     // Emit initial progress so the UI shows something
     onProgress({ id, percent: 0, message: `Finding: ${info.title}`, speed: null, eta: null })
 
     startDownload({
       id,
-      url: query,
+      url: fallbackQuery,
       quality,
       outputPath,
       onProgress,
       onComplete,
       onError,
-      isSearch: true   // skip --no-playlist for search queries
+      isSearch: true,
+      searchTerm      // triggers Topic channel lookup first
     })
   }).catch((err) => {
     console.error('[spotify] failed to fetch track info:', err.message)

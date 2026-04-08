@@ -57,8 +57,8 @@ const useDownloadStore = create((set, get) => ({
   addDownload: async (url) => {
     const id = generateId()
     const platform = detectPlatform(url)
-    // For text search queries, prefix with ytsearch1: for yt-dlp
     const resolvedUrl = platform === 'search' ? `ytsearch1:${url}` : url
+    const searchTerm = platform === 'search' ? url : null
 
     // Add skeleton item immediately
     set((state) => ({
@@ -117,7 +117,7 @@ const useDownloadStore = create((set, get) => ({
     // Start the download
     const { outputPath, quality } = get()
     try {
-      await window.electronAPI.startDownload({ id, url: resolvedUrl, quality, outputPath })
+      await window.electronAPI.startDownload({ id, url: resolvedUrl, quality, outputPath, searchTerm })
       set((state) => ({
         downloads: state.downloads.map((d) =>
           d.id === id ? { ...d, status: 'downloading', message: 'Downloading...' } : d

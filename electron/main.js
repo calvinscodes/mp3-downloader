@@ -103,7 +103,7 @@ ipcMain.handle('info:fetch', async (_event, url) => {
 })
 
 // Start a download — routes to yt-dlp or spotdl based on platform
-ipcMain.handle('download:start', async (_event, { id, url, quality, outputPath }) => {
+ipcMain.handle('download:start', async (_event, { id, url, quality, outputPath, searchTerm }) => {
   const platform = detectPlatform(url)
 
   const sendProgress = (data) => {
@@ -128,7 +128,9 @@ ipcMain.handle('download:start', async (_event, { id, url, quality, outputPath }
       id, url, quality, outputPath,
       onProgress: sendProgress,
       onComplete: sendComplete,
-      onError: sendError
+      onError: sendError,
+      isSearch: !!searchTerm,
+      searchTerm: searchTerm || null
     })
   }
 
