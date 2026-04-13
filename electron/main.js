@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const https = require('https')
+const { spawn } = require('child_process')
 
 const { detectPlatform, checkDependencies } = require('./utils')
 const { fetchInfo, startDownload, cancelDownload } = require('./downloader')
@@ -258,25 +260,117 @@ function checkForUpdates() {
         const latest = (release.tag_name || '').replace(/^v/, '')
         const current = app.getVersion()
 
-        if (latest && isNewerVersion(latest, current)) {
-          const releaseUrl = release.html_url || 'https://github.com/calvinscodes/mp3-downloader/releases/latest'
-          dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Update Available',
-            message: `Wavdrop ${latest} is available`,
-            detail: `You're running ${current}. Download the new DMG, open it and drag Wavdrop to Applications to update.`,
-            buttons: ['Download Now', 'Later'],
-            defaultId: 0
-          }).then(({ response }) => {
-            if (response === 0) shell.openExternal(releaseUrl)
-          })
-        }
+        if (!latest || !isNewerVersion(latest, current)) return
+
+        // Find the DMG asset in the release
+        const dmgAsset = (release.assets || []).find(a => a.name.endsWith('.dmg'))
+        if (!dmgAsset) return
+
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Update Available',
+          message: `Wavdrop ${latest} is available`,
+          detail: `You're on ${current}. Click Install to download and update automatically — no dragging, no Terminal commands.`,
+          buttons: ['Install Update', 'Later'],
+          defaultId: 0
+        }).then(({ response }) => {
+          if (response !== 0) return
+          downloadAndInstallUpdate(dmgAsset.browser_download_url, latest)
+        })
       } catch (e) {
         console.error('[updater] parse error:', e.message)
       }
     })
   }).on('error', (e) => {
     console.error('[updater] network error:', e.message)
+  })
+}
+
+function downloadAndInstallUpdate(dmgUrl, version) {
+  const dmgPath = path.join(os.tmpdir(), `Wavdrop-${version}.dmg`)
+
+  // Show downloading dialog (non-blocking)
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'Downloading Update',
+    message: `Downloading Wavdrop ${version}…`,
+    detail: 'This will take a moment. The app will restart automatically when ready.',
+    buttons: ['OK']
+  })
+
+  downloadFile(dmgUrl, dmgPath, (progress) => {
+    console.log(`[updater] download progress: ${progress}%`)
+  })
+  .then(() => {
+    console.log('[updater] download complete, installing...')
+    return installDmg(dmgPath)
+  })
+  .then(() => {
+    console.log('[updater] install complete, relaunching...')
+    // Small delay so the new app is fully written before we quit
+    setTimeout(() => {
+      spawn('open', ['-a', 'Wavdrop'], { detached: true, stdio: 'ignore' }).unref()
+      app.quit()
+    }, 1500)
+  })
+  .catch((err) => {
+    console.error('[updater] install failed:', err.message)
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Update Failed',
+      message: 'Could not install the update automatically.',
+      detail: err.message,
+      buttons: ['OK']
+    })
+  })
+}
+
+function downloadFile(url, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    const doGet = (u) => {
+      https.get(u, { headers: { 'User-Agent': 'Wavdrop-Updater' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return doGet(res.headers.location)
+        }
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`))
+
+        const total = parseInt(res.headers['content-length'] || '0', 10)
+        let received = 0
+        const file = fs.createWriteStream(destPath)
+
+        res.on('data', (chunk) => {
+          received += chunk.length
+          if (total && onProgress) onProgress(Math.round((received / total) * 100))
+        })
+        res.pipe(file)
+        file.on('finish', () => { file.close(); resolve() })
+        file.on('error', reject)
+      }).on('error', reject)
+    }
+    doGet(url)
+  })
+}
+
+function installDmg(dmgPath) {
+  // Uses AppleScript to: mount DMG → copy app → strip quarantine → unmount
+  // "with administrator privileges" prompts for password only if /Applications requires it
+  const script = `
+    do shell script "
+      hdiutil attach '${dmgPath}' -mountpoint /Volumes/WavdropUpdate -nobrowse -quiet &&
+      cp -Rf '/Volumes/WavdropUpdate/Wavdrop.app' '/Applications/' &&
+      xattr -cr '/Applications/Wavdrop.app' &&
+      hdiutil detach /Volumes/WavdropUpdate -quiet
+    " with administrator privileges
+  `
+  return new Promise((resolve, reject) => {
+    const proc = spawn('osascript', ['-e', script])
+    let stderr = ''
+    proc.stderr.on('data', (d) => { stderr += d.toString() })
+    proc.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(stderr || `osascript exited with code ${code}`))
+    })
+    proc.on('error', reject)
   })
 }
 
