@@ -96,9 +96,10 @@ function fetchSpotifyTrackInfo(url) {
 
     // --- Thumbnail: from oEmbed ---
     const thumbnail = oembed?.thumbnail_url || null
+    let durationSeconds = 0
 
-    // --- Artist: scrape the embed page HTML ---
-    if (!artist && embedHtml) {
+    // --- Artist + Duration: scrape the embed page HTML ---
+    if (embedHtml) {
       console.log(`[spotify] embed HTML length: ${embedHtml.length}`)
 
       // Try meta author tag
@@ -120,33 +121,33 @@ function fetchSpotifyTrackInfo(url) {
       }
 
       // Try __NEXT_DATA__ JSON embedded by Next.js
-      if (!artist) {
-        const nextDataMatch = embedHtml.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
-        if (nextDataMatch) {
-          try {
-            const nextData = JSON.parse(nextDataMatch[1])
-            console.log(`[spotify] __NEXT_DATA__ keys:`, Object.keys(nextData?.props?.pageProps || {}))
-            const entity = nextData?.props?.pageProps?.state?.data?.entity
-            console.log(`[spotify] entity keys:`, entity ? Object.keys(entity) : 'none')
+      const nextDataMatch = embedHtml.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
+      if (nextDataMatch) {
+        try {
+          const nextData = JSON.parse(nextDataMatch[1])
+          const entity = nextData?.props?.pageProps?.state?.data?.entity
+          if (!artist) {
             if (entity?.artists?.[0]?.name) {
               artist = entity.artists[0].name
             } else if (entity?.data?.artists?.items?.[0]?.profile?.name) {
               artist = entity.data.artists.items[0].profile.name
             }
             if (artist) console.log(`[spotify] artist from __NEXT_DATA__: "${artist}"`)
-          } catch (e) {
-            console.log(`[spotify] __NEXT_DATA__ parse error:`, e.message)
           }
-        } else {
-          console.log(`[spotify] no __NEXT_DATA__ found in embed HTML`)
-          // Log first 500 chars to see what we got
-          console.log(`[spotify] embed HTML preview:`, embedHtml.slice(0, 500))
+          // Extract track duration in milliseconds
+          const durationMs = entity?.duration || entity?.trackDuration || entity?.data?.duration?.totalMilliseconds
+          if (durationMs) {
+            durationSeconds = Math.round(durationMs / 1000)
+            console.log(`[spotify] duration from __NEXT_DATA__: ${durationSeconds}s`)
+          }
+        } catch (e) {
+          console.log(`[spotify] __NEXT_DATA__ parse error:`, e.message)
         }
       }
     }
 
-    console.log(`[spotify] resolved → title="${title}" artist="${artist}"`)
-    return { title, artist, thumbnail, duration: '', platform: 'spotify' }
+    console.log(`[spotify] resolved → title="${title}" artist="${artist}" duration=${durationSeconds}s`)
+    return { title, artist, thumbnail, duration: '', durationSeconds, platform: 'spotify' }
   })
 }
 
@@ -169,6 +170,11 @@ function startSpotifyDownload({ id, url, quality, outputPath, onProgress, onComp
     // Emit initial progress so the UI shows something
     onProgress({ id, percent: 0, message: `Finding: ${info.title}`, speed: null, eta: null })
 
+    // Format filename as "Song - Artist" using the clean Spotify metadata
+    const customFilename = info.artist
+      ? `${info.title} - ${info.artist}`
+      : info.title
+
     startDownload({
       id,
       url: fallbackQuery,
@@ -178,7 +184,12 @@ function startSpotifyDownload({ id, url, quality, outputPath, onProgress, onComp
       onComplete,
       onError,
       isSearch: true,
-      searchTerm      // triggers Topic channel lookup first
+      searchTerm,
+      durationSeconds: info.durationSeconds || 0,
+      customFilename,
+      thumbnailUrl: info.thumbnail || null,
+      trackTitle: info.title || null,
+      trackArtist: info.artist || null
     })
   }).catch((err) => {
     console.error('[spotify] failed to fetch track info:', err.message)

@@ -1,5 +1,8 @@
 const { spawn } = require('child_process')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
+const https = require('https')
 const { getBinaryPath, ensureExecutable } = require('./utils')
 
 // Map of active child processes keyed by download id
@@ -67,90 +70,123 @@ function fetchInfo(url) {
 }
 
 /**
- * Search for a Topic-channel upload (official studio audio) for a given search term.
- * YouTube auto-generates "Artist - Topic" channels that contain only official audio.
- * Returns a direct youtube.com URL if found, or null if not found.
+ * Find the best YouTube match for a Spotify track using two strategies:
  *
- * @param {string} searchTerm  e.g. "All Things Break - Gravity"
- * @returns {Promise<string|null>}
+ * 1. Topic channel scan (fast, flat-playlist): look for an "Artist - Topic"
+ *    channel upload in the top 15 results — these are auto-generated official
+ *    audio uploads and are always the correct studio recording.
+ *
+ * 2. Duration matching (if no Topic channel): fetch full metadata for the top
+ *    10 results one-by-one and return the first whose duration is within ±8s
+ *    of the Spotify track's known duration.
+ *
+ * @param {string} searchTerm       e.g. "All Things Break - Gravity"
+ * @param {number} durationSeconds  Spotify track duration (0 = unknown)
+ * @returns {Promise<string|null>}  YouTube URL or null (triggers fallback)
  */
-function findTopicChannelVideo(searchTerm) {
-  return new Promise((resolve) => {
-    const ytdlpPath = getBinaryPath('yt-dlp')
-    ensureExecutable(ytdlpPath)
+function findBestYouTubeMatch(searchTerm, durationSeconds = 0) {
+  const ytdlpPath = getBinaryPath('yt-dlp')
+  ensureExecutable(ytdlpPath)
 
-    const args = [
-      '--dump-json',
-      '--flat-playlist',
-      '--no-warnings',
-      `ytsearch15:${searchTerm}`
-    ]
-
-    console.log('[topic-search] scanning 15 results for Topic channel:', searchTerm)
-
+  // --- Phase 1: fast Topic channel scan ---
+  const phase1 = new Promise((resolve) => {
+    const args = ['--dump-json', '--flat-playlist', '--no-warnings', `ytsearch15:${searchTerm}`]
+    console.log('[yt-match] phase 1: scanning for Topic channel:', searchTerm)
     const proc = spawn(ytdlpPath, args)
-    let output = ''
-    let resolved = false
+    let buf = ''
+    let done = false
 
-    const done = (val) => {
-      if (!resolved) { resolved = true; resolve(val) }
-    }
+    const finish = (val) => { if (!done) { done = true; proc.kill(); resolve(val) } }
 
     proc.stdout.on('data', (d) => {
-      output += d.toString()
-      // Parse line-by-line so we can resolve early on first match
-      const lines = output.split('\n')
-      output = lines.pop() // keep incomplete last line buffered
+      buf += d.toString()
+      const lines = buf.split('\n')
+      buf = lines.pop()
       for (const line of lines) {
         if (!line.trim()) continue
         try {
-          const entry = JSON.parse(line)
-          const channel = (entry.channel || entry.uploader || '').toLowerCase()
-          if (channel.endsWith('- topic')) {
-            console.log(`[topic-search] found: "${entry.channel}" → ${entry.id}`)
-            proc.kill()
-            done(`https://www.youtube.com/watch?v=${entry.id}`)
+          const e = JSON.parse(line)
+          const ch = (e.channel || e.uploader || '').toLowerCase()
+          if (ch.endsWith('- topic')) {
+            console.log(`[yt-match] Topic channel found: "${e.channel}" → ${e.id}`)
+            finish(`https://www.youtube.com/watch?v=${e.id}`)
             return
           }
         } catch (_) {}
       }
     })
 
-    proc.on('close', () => {
-      console.log('[topic-search] no Topic channel found, using fallback search')
-      done(null)
-    })
-
-    proc.on('error', () => done(null))
-
-    // Safety timeout
-    setTimeout(() => { proc.kill(); done(null) }, 20000)
+    proc.on('close', () => finish(null))
+    proc.on('error', () => finish(null))
+    setTimeout(() => finish(null), 15000)
   })
+
+  // --- Phase 2: duration matching (only if we have a known duration) ---
+  const phase2 = durationSeconds > 0
+    ? new Promise((resolve) => {
+        const args = ['--dump-json', '--skip-download', '--no-warnings', '--no-playlist', `ytsearch10:${searchTerm}`]
+        console.log(`[yt-match] phase 2: duration matching (target: ${durationSeconds}s)`)
+        const proc = spawn(ytdlpPath, args)
+        let buf = ''
+        let done = false
+
+        const finish = (val) => { if (!done) { done = true; proc.kill(); resolve(val) } }
+
+        proc.stdout.on('data', (d) => {
+          buf += d.toString()
+          const lines = buf.split('\n')
+          buf = lines.pop()
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const e = JSON.parse(line)
+              const ytDuration = e.duration // seconds
+              if (ytDuration && Math.abs(ytDuration - durationSeconds) <= 8) {
+                console.log(`[yt-match] duration match: ${ytDuration}s ≈ ${durationSeconds}s → ${e.id} "${e.title}"`)
+                finish(`https://www.youtube.com/watch?v=${e.id}`)
+                return
+              } else if (ytDuration) {
+                console.log(`[yt-match] duration miss: ${ytDuration}s vs ${durationSeconds}s — "${e.title}"`)
+              }
+            } catch (_) {}
+          }
+        })
+
+        proc.on('close', () => finish(null))
+        proc.on('error', () => finish(null))
+        setTimeout(() => finish(null), 30000)
+      })
+    : Promise.resolve(null)
+
+  // Run phase 1 first; only run phase 2 if phase 1 found nothing
+  return phase1.then((topicUrl) => topicUrl || phase2)
 }
 
 /**
  * Start a download using yt-dlp.
  * @param {{ id: string, url: string, quality: string, outputPath: string, onProgress: Function, onComplete: Function, onError: Function, isSearch?: boolean, searchTerm?: string }} opts
  */
-function startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, searchTerm = null }) {
-  // For search-based downloads, first try to find the official Topic channel upload
+function startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, searchTerm = null, durationSeconds = 0, customFilename = null, thumbnailUrl = null, trackTitle = null, trackArtist = null }) {
+  // For search-based downloads, find the best YouTube match first
   if (isSearch && searchTerm) {
-    findTopicChannelVideo(searchTerm).then((topicUrl) => {
-      _startDownload({ id, url: topicUrl || url, quality, outputPath, onProgress, onComplete, onError, isSearch: !topicUrl })
+    findBestYouTubeMatch(searchTerm, durationSeconds).then((matchUrl) => {
+      _startDownload({ id, url: matchUrl || url, quality, outputPath, onProgress, onComplete, onError, isSearch: !matchUrl, customFilename, thumbnailUrl, trackTitle, trackArtist })
     })
     return
   }
-  _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch })
+  _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch, customFilename, thumbnailUrl, trackTitle, trackArtist })
 }
 
-function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false }) {
+function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, customFilename = null, thumbnailUrl = null, trackTitle = null, trackArtist = null }) {
   const ytdlpPath = getBinaryPath('yt-dlp')
   const ffmpegPath = getBinaryPath('ffmpeg')
   ensureExecutable(ytdlpPath)
   ensureExecutable(ffmpegPath)
 
   const qualityValue = QUALITY_MAP[quality] || '0'
-  const outputTemplate = path.join(outputPath, '%(title)s.%(ext)s')
+  // Use custom filename (e.g. "Song - Artist") when provided, otherwise use YouTube title
+  const filenameTemplate = customFilename ? `${customFilename}.%(ext)s` : '%(title)s.%(ext)s'
+  const outputTemplate = path.join(outputPath, filenameTemplate)
 
   const args = [
     '--extract-audio',
@@ -159,6 +195,8 @@ function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, 
     '--ffmpeg-location', ffmpegPath,
     '--output', outputTemplate,
     '--newline',
+    '--embed-thumbnail',   // embed cover art (YouTube thumbnail for YT/SC downloads)
+    '--add-metadata',      // embed title/artist metadata tags
     // --no-playlist is only for direct URLs, not search queries
     ...(isSearch ? [] : ['--no-playlist']),
     url
@@ -193,7 +231,18 @@ function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, 
     activeProcesses.delete(id)
     console.log('[yt-dlp] exit code:', code)
     if (code === 0) {
-      onComplete({ id })
+      // For Spotify downloads: replace the YouTube thumbnail with the real album art
+      if (thumbnailUrl && customFilename) {
+        const mp3Path = path.join(outputPath, `${customFilename}.mp3`)
+        embedAlbumArt(mp3Path, thumbnailUrl, ffmpegPath, trackTitle, trackArtist)
+          .then(() => onComplete({ id }))
+          .catch((err) => {
+            console.warn('[album-art] failed to embed, continuing anyway:', err.message)
+            onComplete({ id })
+          })
+      } else {
+        onComplete({ id })
+      }
     } else {
       // Surface friendly messages for common errors
       const msg = buildErrorMessage(stderr, url)
@@ -205,6 +254,69 @@ function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, 
     activeProcesses.delete(id)
     onError({ id, message: `Failed to start download: ${err.message}` })
   })
+}
+
+/**
+ * Download a URL to a local file path, following redirects.
+ */
+function downloadFile(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath)
+    const get = (u) => {
+      https.get(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return get(res.headers.location)
+        }
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`))
+        res.pipe(file)
+        file.on('finish', () => { file.close(); resolve() })
+      }).on('error', reject)
+    }
+    get(url)
+  })
+}
+
+/**
+ * Embed album art + correct ID3 tags into an existing MP3 file using ffmpeg.
+ * Replaces YouTube thumbnail and metadata with the real Spotify track info.
+ */
+function embedAlbumArt(mp3Path, thumbnailUrl, ffmpegPath, title = null, artist = null) {
+  const tmpImg = path.join(os.tmpdir(), `wavdrop-art-${Date.now()}.jpg`)
+  const tmpMp3 = path.join(os.tmpdir(), `wavdrop-mp3-${Date.now()}.mp3`)
+
+  return downloadFile(thumbnailUrl, tmpImg)
+    .then(() => new Promise((resolve, reject) => {
+      console.log('[album-art] embedding Spotify art + metadata into:', mp3Path)
+      const metadataArgs = []
+      if (title)  metadataArgs.push('-metadata', `title=${title}`)
+      if (artist) metadataArgs.push('-metadata', `artist=${artist}`)
+
+      const proc = spawn(ffmpegPath, [
+        '-i', mp3Path,
+        '-i', tmpImg,
+        '-map', '0:a',          // audio only from MP3
+        '-map', '1:0',          // new cover image
+        '-c:a', 'copy',         // don't re-encode audio
+        '-id3v2_version', '3',  // ID3v2.3 — widest compatibility
+        ...metadataArgs,
+        '-metadata:s:v', 'title=Album cover',
+        '-metadata:s:v', 'comment=Cover (front)',
+        '-y', tmpMp3
+      ])
+      proc.on('close', (code) => {
+        if (code === 0) resolve()
+        else reject(new Error(`ffmpeg exited with code ${code}`))
+      })
+      proc.on('error', reject)
+    }))
+    .then(() => {
+      fs.renameSync(tmpMp3, mp3Path)
+      console.log('[album-art] done')
+    })
+    .finally(() => {
+      try { fs.unlinkSync(tmpImg) } catch (_) {}
+      try { fs.unlinkSync(tmpMp3) } catch (_) {}
+    })
 }
 
 /**

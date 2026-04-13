@@ -1,6 +1,6 @@
 {
   "name": "wavdrop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Personal MP3 downloader for YouTube, SoundCloud & Spotify",
   "main": "electron/main.js",
   "scripts": {
