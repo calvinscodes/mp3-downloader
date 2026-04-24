@@ -1,6 +1,6 @@
 {
   "name": "wavdrop",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Personal MP3 downloader for YouTube, SoundCloud & Spotify",
   "main": "electron/main.js",
   "scripts": {
@@ -30,7 +30,8 @@
     },
     "extraResources": [
       { "from": "resources/yt-dlp", "to": "yt-dlp" },
-      { "from": "resources/ffmpeg", "to": "ffmpeg" }
+      { "from": "resources/ffmpeg", "to": "ffmpeg" },
+      { "from": "resources/ffprobe", "to": "ffprobe" }
     ],
     "files": [
       "dist/**/*",

@@ -180,8 +180,10 @@ function startDownload({ id, url, quality, outputPath, onProgress, onComplete, o
 function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, customFilename = null, thumbnailUrl = null, trackTitle = null, trackArtist = null }) {
   const ytdlpPath = getBinaryPath('yt-dlp')
   const ffmpegPath = getBinaryPath('ffmpeg')
+  const ffprobePath = getBinaryPath('ffprobe')
   ensureExecutable(ytdlpPath)
   ensureExecutable(ffmpegPath)
+  ensureExecutable(ffprobePath)
 
   const qualityValue = QUALITY_MAP[quality] || '0'
   // Use custom filename (e.g. "Song - Artist") when provided, otherwise use YouTube title
