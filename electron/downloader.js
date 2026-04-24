@@ -195,8 +195,7 @@ function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, 
     '--ffmpeg-location', ffmpegPath,
     '--output', outputTemplate,
     '--newline',
-    '--embed-thumbnail',   // embed cover art (YouTube thumbnail for YT/SC downloads)
-    '--add-metadata',      // embed title/artist metadata tags
+    '--add-metadata',      // embed basic title/artist tags from the source
     // --no-playlist is only for direct URLs, not search queries
     ...(isSearch ? [] : ['--no-playlist']),
     url

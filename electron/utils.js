@@ -99,17 +99,11 @@ function checkDependencies() {
     })
   })
 
-  const checkPython3 = new Promise((resolve) => {
-    exec('python3 --version', { timeout: 5000 }, (err) => {
-      resolve(!err)
-    })
-  })
-
-  return Promise.all([checkSpotdl, checkPython3]).then(([spotdl, python3]) => ({
+  return checkSpotdl.then((spotdl) => ({
     ytdlp,
     ffmpeg,
     spotdl,
-    python3
+    python3: false   // no longer needed — Spotify handled via yt-dlp directly
   }))
 }
 
