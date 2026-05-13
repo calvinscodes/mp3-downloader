@@ -183,17 +183,20 @@ function startDownload({ id, url, quality, outputPath, onProgress, onComplete, o
  * Returns { dir, bin } where bin is the full path to the ffmpeg executable.
  */
 function resolveFfmpeg() {
+  // Prefer system ffmpeg — bundled unsigned binaries can be blocked by macOS
+  // Gatekeeper even after xattr -cr, so a Homebrew/system install is more reliable
+  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) {
+    if (fs.existsSync(path.join(dir, 'ffmpeg')) && fs.existsSync(path.join(dir, 'ffprobe'))) {
+      return { dir, bin: path.join(dir, 'ffmpeg') }
+    }
+  }
+  // Fall back to bundled binaries (fresh Mac with no Homebrew)
   const bundledFfmpeg = getBinaryPath('ffmpeg')
   const bundledFfprobe = getBinaryPath('ffprobe')
   if (fs.existsSync(bundledFfmpeg) && fs.existsSync(bundledFfprobe)) {
     ensureExecutable(bundledFfmpeg)
     ensureExecutable(bundledFfprobe)
     return { dir: path.dirname(bundledFfmpeg), bin: bundledFfmpeg }
-  }
-  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) {
-    if (fs.existsSync(path.join(dir, 'ffmpeg'))) {
-      return { dir, bin: path.join(dir, 'ffmpeg') }
-    }
   }
   return { dir: null, bin: 'ffmpeg' }
 }
