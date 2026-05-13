@@ -104,10 +104,12 @@ const useDownloadStore = create((set, get) => ({
         )
       }))
     } catch (err) {
+      const message = (err.message || 'Failed to fetch track info.')
+        .replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
       set((state) => ({
         downloads: state.downloads.map((d) =>
           d.id === id
-            ? { ...d, status: 'error', error: err.message, message: err.message }
+            ? { ...d, status: 'error', error: message, message }
             : d
         )
       }))

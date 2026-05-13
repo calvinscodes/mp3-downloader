@@ -101,7 +101,26 @@ ipcMain.handle('info:fetch', async (_event, url) => {
       }
     }
   }
-  return fetchInfo(url)
+  if (platform === 'soundcloud') {
+    const parsed = parseSoundCloudUrl(url)
+    return {
+      title: parsed ? toTitleCase(parsed.track) : 'SoundCloud Track',
+      thumbnail: null,
+      uploader: parsed ? toTitleCase(parsed.artist) : 'SoundCloud',
+      duration: '',
+      platform: 'soundcloud'
+    }
+  }
+  try {
+    return await fetchInfo(url)
+  } catch (err) {
+    const msg = err.message || ''
+    if (msg.includes('404') || msg.includes('Not Found')) throw new Error('Track not found or has been removed.')
+    if (msg.includes('403') || msg.includes('Forbidden')) throw new Error('Track is private or requires login.')
+    if (msg.includes('geo') || msg.includes('not available in your country')) throw new Error('Track is geo-restricted in your region.')
+    if (msg.includes('Private')) throw new Error('This track is private.')
+    throw new Error(msg.trim().split('\n').pop() || 'Failed to fetch track info.')
+  }
 })
 
 // Start a download — routes to yt-dlp or spotdl based on platform
@@ -124,6 +143,19 @@ ipcMain.handle('download:start', async (_event, { id, url, quality, outputPath, 
       onProgress: sendProgress,
       onComplete: sendComplete,
       onError: sendError
+    })
+  } else if (platform === 'soundcloud') {
+    const parsed = parseSoundCloudUrl(url)
+    const scSearchTerm = parsed
+      ? `${parsed.track.replace(/-/g, ' ')} ${parsed.artist.replace(/-/g, ' ')}`
+      : searchTerm || url
+    startDownload({
+      id, url, quality, outputPath,
+      onProgress: sendProgress,
+      onComplete: sendComplete,
+      onError: sendError,
+      isSearch: true,
+      searchTerm: scSearchTerm
     })
   } else {
     startDownload({
@@ -395,4 +427,20 @@ function extractSpotifyTitle(url) {
   } catch (_) {
     return 'Spotify Track'
   }
+}
+
+// Parse artist and track slugs from a SoundCloud URL
+// e.g. https://soundcloud.com/forss/fictures → { artist: 'forss', track: 'fictures' }
+function parseSoundCloudUrl(url) {
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean)
+    if (parts.length >= 2) return { artist: parts[0], track: parts[1] }
+    if (parts.length === 1) return { artist: parts[0], track: parts[0] }
+  } catch (_) {}
+  return null
+}
+
+// Convert a slug like "my-track-name" to "My Track Name"
+function toTitleCase(slug) {
+  return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }

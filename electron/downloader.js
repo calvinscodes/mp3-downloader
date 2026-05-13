@@ -177,13 +177,32 @@ function startDownload({ id, url, quality, outputPath, onProgress, onComplete, o
   _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch, customFilename, thumbnailUrl, trackTitle, trackArtist })
 }
 
+/**
+ * Resolve the directory to pass to yt-dlp's --ffmpeg-location.
+ * Prefers bundled binaries; falls back to Homebrew / system installs.
+ * Returns { dir, bin } where bin is the full path to the ffmpeg executable.
+ */
+function resolveFfmpeg() {
+  const bundledFfmpeg = getBinaryPath('ffmpeg')
+  const bundledFfprobe = getBinaryPath('ffprobe')
+  if (fs.existsSync(bundledFfmpeg) && fs.existsSync(bundledFfprobe)) {
+    ensureExecutable(bundledFfmpeg)
+    ensureExecutable(bundledFfprobe)
+    return { dir: path.dirname(bundledFfmpeg), bin: bundledFfmpeg }
+  }
+  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) {
+    if (fs.existsSync(path.join(dir, 'ffmpeg'))) {
+      return { dir, bin: path.join(dir, 'ffmpeg') }
+    }
+  }
+  return { dir: null, bin: 'ffmpeg' }
+}
+
 function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, onError, isSearch = false, customFilename = null, thumbnailUrl = null, trackTitle = null, trackArtist = null }) {
   const ytdlpPath = getBinaryPath('yt-dlp')
-  const ffmpegPath = getBinaryPath('ffmpeg')
-  const ffprobePath = getBinaryPath('ffprobe')
   ensureExecutable(ytdlpPath)
-  ensureExecutable(ffmpegPath)
-  ensureExecutable(ffprobePath)
+  const { dir: ffmpegDir, bin: ffmpegBin } = resolveFfmpeg()
+  const ffmpegPath = ffmpegBin
 
   const qualityValue = QUALITY_MAP[quality] || '0'
   // Use custom filename (e.g. "Song - Artist") when provided, otherwise use YouTube title
@@ -194,7 +213,7 @@ function _startDownload({ id, url, quality, outputPath, onProgress, onComplete, 
     '--extract-audio',
     '--audio-format', 'mp3',
     '--audio-quality', qualityValue,
-    '--ffmpeg-location', ffmpegPath,
+    ...(ffmpegDir ? ['--ffmpeg-location', ffmpegDir] : []),
     '--output', outputTemplate,
     '--newline',
     '--add-metadata',      // embed basic title/artist tags from the source
